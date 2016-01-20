@@ -6,7 +6,7 @@
 extern Closure *pack_int(int);
 extern int unpack_int(Closure *);
 
-extern Function int_add;
-extern Function int_multiply;
+extern Thunk int_add;
+extern Thunk int_multiply;
 
 #endif

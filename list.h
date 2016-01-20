@@ -8,8 +8,9 @@ extern Closure *pack_string(char const *);
 extern char *unpack_string(Closure *);
 
 extern Thunk nil;
-extern Function cons;
+extern Thunk cons;
 
-extern Function append;
+extern Thunk append;
+extern Thunk concat;
 
 #endif

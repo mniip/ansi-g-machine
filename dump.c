@@ -39,7 +39,7 @@ void dump_indent(int in, Closure *c)
 		printf("CON");
 		if(c->u.con.type == CON_BOX)
 		{
-			printf("(BOX (%d)):\n", c->u.con.u.box.variant);
+			printf("(%d):\n", c->u.con.u.box.variant);
 			for(i = 0; c->u.con.u.box.args[i]; i++)
 				dump_indent(in + 1, c->u.con.u.box.args[i]);
 		}
@@ -59,12 +59,7 @@ void dump_indent(int in, Closure *c)
 			printf("(?(%d))\n", c->u.con.type);
 		break;
 	case CLOSURE_THUNK:
-		printf("THUNK {%s}:\n", fun_name(c->u.thunk.fun));
-		for(i = 0; c->u.thunk.args[i]; i++)
-			dump_indent(in + 1, c->u.thunk.args[i]);
-		break;
-	case CLOSURE_APPLY:
-		printf("APPLY {%s}:\n", fun_name(c->u.thunk.fun));
+		printf("THUNK {%s}/%d:\n", fun_name(c->u.thunk.fun), c->u.thunk.arity);
 		for(i = 0; c->u.thunk.args[i]; i++)
 			dump_indent(in + 1, c->u.thunk.args[i]);
 		break;

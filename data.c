@@ -22,6 +22,7 @@ Closure *new_box(int variant, size_t len)
 	ret->u.con.type = CON_BOX;
 	ret->u.con.u.box.variant = variant;
 	ret->u.con.u.box.args = calloc(sizeof(Closure *), len + 1);
+	ret->u.con.u.box.args[len] = NULL;
 	return ret;
 }
 
@@ -35,32 +36,20 @@ Closure *new_unbox(size_t size)
 	return ret;
 }
 
-Closure *new_thunk(Thunk *fun, size_t len)
+Closure *new_thunk(Thunk *fun, size_t len, int arity)
 {
 	Closure *ret = new_closure();
 	ret->type = CLOSURE_THUNK;
 	ret->u.thunk.fun = fun;
+	ret->u.thunk.arity = arity;
 	ret->u.thunk.args = calloc(sizeof(Closure *), len + 1);
+	ret->u.thunk.args[len] = NULL;
 	return ret;
 }
 
-Closure *new_apply(Function *fun, size_t len)
+Closure *invoke(Thunk *fun, int arity)
 {
-	Closure *ret = new_closure();
-	ret->type = CLOSURE_APPLY;
-	ret->u.apply.fun = fun;
-	ret->u.apply.args = calloc(sizeof(Closure *), len + 1);
-	return ret;
-}
-
-Closure *invoke_thunk(Thunk *fun)
-{
-	return new_thunk(fun, 0);
-}
-
-Closure *invoke_function(Function *fun)
-{
-	return new_apply(fun, 0);
+	return new_thunk(fun, 0, arity);
 }
 
 Closure *new_bottom(Closure *bottom)
@@ -83,9 +72,6 @@ void cleanup_closure(Closure *c)
 		break;
 	case CLOSURE_THUNK:
 		free(c->u.thunk.args);
-		break;
-	case CLOSURE_APPLY:
-		free(c->u.apply.args);
 		break;
 	case CLOSURE_BOTTOM:
 		break;
@@ -147,21 +133,13 @@ void replace(Closure *self, Closure const *c)
 		break;
 	case CLOSURE_THUNK:
 		self->u.thunk.fun = c->u.thunk.fun;
+		self->u.thunk.arity = c->u.thunk.arity;
 		i = 0;
 		while(c->u.thunk.args[i])
 			i++;
 		self->u.thunk.args = calloc(sizeof(Closure *), i + 1);
 		for(i = 0; c->u.thunk.args[i]; i++)
 			self->u.thunk.args[i] = c->u.thunk.args[i];
-		break;
-	case CLOSURE_APPLY:
-		self->u.apply.fun = c->u.apply.fun;
-		i = 0;
-		while(c->u.apply.args[i])
-			i++;
-		self->u.apply.args = calloc(sizeof(Closure *), i + 1);
-		for(i = 0; c->u.apply.args[i]; i++)
-			self->u.apply.args[i] = c->u.apply.args[i];
 		break;
 	case CLOSURE_BOTTOM:
 		self->u.bottom = c->u.bottom;
@@ -171,8 +149,17 @@ void replace(Closure *self, Closure const *c)
 
 int whnf(Closure *self, Closure *c)
 {
-	while(c->type == CLOSURE_THUNK)
+	while(c->type == CLOSURE_THUNK && !c->u.thunk.arity)
+	{
 		c->u.thunk.fun(c);
+		if(self)
+			gc_enter(self);
+		gc_enter(c);
+		gc();
+		gc_exit(c);
+		if(self)
+			gc_exit(self);
+	}
 	if(c->type == CLOSURE_BOTTOM)
 	{
 		if(self)
@@ -184,28 +171,17 @@ int whnf(Closure *self, Closure *c)
 
 Closure *apply(Closure *fun, Closure *arg)
 {
+	size_t i;
+	Closure *ret;
 	if(whnf(NULL, fun))
 		return fun;
-	return fun->u.apply.fun(fun, arg);
-}
-
-Closure *curry_thunk(Closure const *self, Thunk *fun, size_t len, Closure *arg)
-{
-	size_t i;
-	Closure *ret = new_thunk(fun, len);
-	for(i = 0; i < len - 1; i++)
-		ret->u.thunk.args[i] = self->u.apply.args[i];
-	ret->u.thunk.args[len - 1] = arg;
-	return ret;
-}
-
-Closure *curry_apply(Closure const *self, Function *fun, size_t len, Closure *arg)
-{
-	size_t i;
-	Closure *ret = new_apply(fun, len);
-	for(i = 0; i < len - 1; i++)
-		ret->u.apply.args[i] = self->u.apply.args[i];
-	ret->u.apply.args[len - 1] = arg;
+	i = 0;
+	while(fun->u.thunk.args[i])
+		i++;
+	ret = new_thunk(fun->u.thunk.fun, i + 1, fun->u.thunk.arity - 1);
+	ret->u.thunk.args[i] = arg;
+	for(i = 0; fun->u.thunk.args[i]; i++)
+		ret->u.thunk.args[i] = fun->u.thunk.args[i];
 	return ret;
 }
 
@@ -235,10 +211,6 @@ void gc_mark(Closure *c)
 	case CLOSURE_THUNK:
 		for(i = 0; c->u.thunk.args[i]; i++)
 			gc_mark(c->u.thunk.args[i]);
-		break;
-	case CLOSURE_APPLY:
-		for(i = 0; c->u.apply.args[i]; i++)
-			gc_mark(c->u.apply.args[i]);
 		break;
 	case CLOSURE_BOTTOM:
 		gc_mark(c->u.bottom);
@@ -275,4 +247,9 @@ void gc_collect()
 		(*ptr)->gc.status &= ~GC_SEEN;
 		ptr = &(*ptr)->gc.next;
 	}
+}
+
+void gc()
+{
+	gc_collect();
 }
